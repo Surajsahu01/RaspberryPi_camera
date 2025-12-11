@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { FiCamera } from "react-icons/fi";
-import { API_URL } from "./Api/api";
+import { API_URL, wss } from "./Api/api";
 
 function App() {
   const [images, setImages] = useState([]);
@@ -12,7 +12,7 @@ function App() {
 
   // Fetch images for selected Pi
   const fetchImages = async () => {
-    const res = await axios.get(`https://${API_URL}/api/camera/images?piId=${selectedPi}`);
+    const res = await axios.get(`${API_URL}/api/camera/images?piId=${selectedPi}`);
     setImages(res.data);
   };
 
@@ -24,13 +24,13 @@ function App() {
 
   // Trigger capture for selected Pi
   const triggerCapture = async () => {
-    await axios.post(`https://${API_URL}/api/camera/trigger-capture`, { piId: selectedPi });
+    await axios.post(`${API_URL}/api/camera/trigger-capture`, { piId: selectedPi });
     alert("Capture requested!");
   };
 
   // Live stream via WebSocket
   useEffect(() => {
-    const ws = new WebSocket(`wss://${API_URL}/ws/live`);
+    const ws = new WebSocket(`wss://${wss}/ws/live`);
     ws.onopen = () => ws.send(JSON.stringify({ piId: selectedPi }));
 
     ws.onmessage = (event) => {
