@@ -1,1 +1,1 @@
-export const API_URL = "https://your-backend.com/api";
+export const API_URL = "https://raspberrypi-camera.onrender.com";
