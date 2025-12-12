@@ -3,52 +3,77 @@ import { useEffect, useRef, useState } from "react";
 export default function Dashboard() {
   const videoRef = useRef();
   const ws = useRef(null);
+  const pc = useRef(null);
 
-  const [pc] = useState(new RTCPeerConnection());
+  const safeSend = (data) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify(data));
+    } else {
+      console.warn("WS not open, message skipped:", data);
+    }
+  };
 
   const start = () => {
+    // Create RTCPeerConnection
+    pc.current = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+
+    // WebSocket
     ws.current = new WebSocket("wss://raspberrypi-camera.onrender.com");
 
-    ws.current.onopen = () => {
-      ws.current.send(JSON.stringify({ role: "client" }));
+    ws.current.onopen = async () => {
+      console.log("WS CONNECTED");
+      safeSend({ role: "client" });
+
+      // Create offer only AFTER WS is open
+      const offer = await pc.current.createOffer();
+      await pc.current.setLocalDescription(offer);
+
+      safeSend({
+        to: "pi",
+        type: "offer",
+        sdp: offer.sdp,
+      });
     };
 
     ws.current.onmessage = async (msg) => {
       const data = JSON.parse(msg.data);
 
       if (data.type === "answer") {
-        await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
+        await pc.current.setRemoteDescription({
+          type: "answer",
+          sdp: data.sdp,
+        });
       }
 
       if (data.type === "candidate") {
         try {
-          await pc.addIceCandidate({ candidate: data.candidate, sdpMid: "0" });
-        } catch {}
+          await pc.current.addIceCandidate({
+            candidate: data.candidate,
+            sdpMid: "0",
+          });
+        } catch (e) {
+          console.error("ICE add error", e);
+        }
       }
     };
 
-    pc.ontrack = (event) => {
+    // Receive remote video
+    pc.current.ontrack = (event) => {
       videoRef.current.srcObject = event.streams[0];
     };
 
-    pc.onicecandidate = (event) => {
+    // Send ICE candidate to PI
+    pc.current.onicecandidate = (event) => {
       if (event.candidate) {
-        ws.current.send(
-          JSON.stringify({ to: "pi", type: "candidate", candidate: event.candidate.candidate })
-        );
+        safeSend({
+          to: "pi",
+          type: "candidate",
+          candidate: event.candidate.candidate,
+        });
       }
     };
-
-    (async () => {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      ws.current.send({
-        to: "pi",
-        type: "offer",
-        sdp: offer.sdp
-      });
-    })();
   };
 
   const capture = async () => {
@@ -76,7 +101,12 @@ export default function Dashboard() {
       </button>
 
       <div className="mt-5">
-        <video ref={videoRef} autoPlay playsInline className="w-full rounded-lg"></video>
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          className="w-full rounded-lg"
+        ></video>
       </div>
     </div>
   );
